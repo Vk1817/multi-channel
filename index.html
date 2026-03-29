@@ -20,18 +20,16 @@ body {
     color: #fff;
 }
 
-/* FULL SCREEN AD CLICK */
+/* AD OVERLAY */
 #ad-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
     width: 100%;
     height: 100%;
     z-index: 9999;
     cursor: pointer;
-    background: rgba(0,0,0,0);
 }
 
+/* HEADER */
 .header {
     padding: 18px;
     text-align: center;
@@ -40,16 +38,25 @@ body {
     color: #ff4ecd;
 }
 
-/* PLAYER CARD */
-.player-card {
+/* DROPDOWN */
+#channelDropdown {
     width: 92%;
     margin: 10px auto;
+    padding: 10px;
+    background: #111;
+    color: white;
+    border: none;
+}
+
+/* PLAYER */
+.player-card {
+    width: 92%;
+    margin: auto;
     padding: 10px;
     border-radius: 20px;
     background: linear-gradient(145deg, #2a1740, #140b24);
 }
 
-/* VIDEO */
 .video-container {
     width: 100%;
     aspect-ratio: 16/9;
@@ -63,16 +70,6 @@ video {
     height: 100%;
 }
 
-/* DROPDOWN */
-#channelDropdown {
-    width: 92%;
-    margin: 10px auto;
-    padding: 10px;
-    background: #111;
-    color: white;
-    border: none;
-}
-
 /* LIVE */
 .live-box {
     margin: 12px auto;
@@ -80,38 +77,24 @@ video {
     text-align: center;
     padding: 6px;
     border-radius: 20px;
-    background: rgba(255, 0, 0, 0.15);
     border: 1px solid red;
-    font-size: 12px;
     color: red;
 }
 
-/* MATCH */
+/* TITLE */
 .match-title {
     text-align: center;
     font-size: 20px;
-    font-weight: 600;
 }
 
 /* BANNER */
 .ad-box {
     width: 92%;
     margin: 20px auto;
-    border-radius: 15px;
-    overflow: hidden;
 }
 
 .ad-box img {
     width: 100%;
-}
-
-/* INFO */
-.info-card {
-    width: 92%;
-    margin: 12px auto;
-    padding: 15px;
-    border-radius: 16px;
-    background: rgba(255,255,255,0.05);
 }
 </style>
 
@@ -127,27 +110,17 @@ video {
 
 <div class="player-card">
     <div class="video-container">
-        <video id="videoPlayer" autoplay playsinline></video>
+        <video id="videoPlayer" playsinline controls></video>
     </div>
 </div>
 
 <div class="live-box">● LIVE</div>
 <div class="match-title">KKR vs MI</div>
 
-<!-- ✅ WHATSAPP BANNER -->
-
 <div class="ad-box">
     <a href="https://wa.me/447955881183" target="_blank">
         <img src="https://github.com/Vk1817/IPL1/blob/main/offstumphd.jpg?raw=true">
     </a>
-</div>
-
-<div class="info-card">
-    <div>DATE: 29-03-2026</div>
-</div>
-
-<div class="info-card">
-    <div>MATCH NO: 2 of 74</div>
 </div>
 
 <script>
@@ -157,7 +130,6 @@ let player;
 let allChannels = [];
 let currentChannel = null;
 
-/* PRIORITY */
 const priorityOrder = [
     "star sports 1 hindi hd",
     "star sports 2 hindi hd",
@@ -168,7 +140,6 @@ const priorityOrder = [
     "star sports tamil"
 ];
 
-/* INIT */
 async function init() {
     const res = await fetch(API_URL);
     const data = await res.json();
@@ -194,10 +165,11 @@ async function init() {
 
     createDropdown();
 
-    loadChannel(allChannels[0]);
+    if (allChannels.length > 0) {
+        loadChannel(allChannels[0]);
+    }
 }
 
-/* DROPDOWN */
 function createDropdown() {
     const dropdown = document.getElementById("channelDropdown");
 
@@ -213,22 +185,23 @@ function createDropdown() {
     };
 }
 
-/* LOAD CHANNEL */
 async function loadChannel(channel) {
     currentChannel = channel;
 
-    if (player) await player.destroy();
+    if (player) {
+        await player.destroy();
+    }
 
     const video = document.getElementById("videoPlayer");
 
     shaka.polyfill.installAll();
+
     player = new shaka.Player(video);
     new shaka.ui.Overlay(player, document.querySelector(".video-container"), video);
 
-    video.muted = true;
-
-    player.addEventListener("error", () => {
-        setTimeout(() => loadChannel(currentChannel), 3000);
+    // ERROR LOG
+    player.addEventListener('error', (e) => {
+        console.log("ERROR:", e.detail);
     });
 
     player.configure({
@@ -239,27 +212,40 @@ async function loadChannel(channel) {
         }
     });
 
+    // 🔥 FIXED HEADERS + TOKEN
     player.getNetworkingEngine().registerRequestFilter((type, request) => {
+
         request.headers["Referer"] = "https://www.jiotv.com/";
+        request.headers["User-Agent"] = "plaYtv/7.1.5 (Linux;Android 13)";
 
         if (channel.cookie) {
             request.headers["Cookie"] = channel.cookie;
 
             const match = channel.cookie.match(/__hdnea__=([^;]+)/);
+
             if (match) {
                 const token = "__hdnea__=" + match[1];
 
-                if (!request.uris[0].includes("__hdnea__")) {
-                    request.uris[0] += (request.uris[0].includes("?") ? "&" : "?") + token;
+                if (
+                    type === shaka.net.NetworkingEngine.RequestType.SEGMENT ||
+                    type === shaka.net.NetworkingEngine.RequestType.MANIFEST
+                ) {
+                    if (!request.uris[0].includes("__hdnea__")) {
+                        request.uris[0] += (request.uris[0].includes("?") ? "&" : "?") + token;
+                    }
                 }
             }
         }
     });
 
-    await player.load(channel.channel_url);
+    try {
+        await player.load(channel.channel_url);
+    } catch (err) {
+        console.log("LOAD ERROR:", err);
+    }
 }
 
-/* AD CLICK */
+// AD CLICK
 function openAd() {
     window.open("https://offstump.com/", "_blank");
     document.getElementById("ad-overlay").style.display = "none";
