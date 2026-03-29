@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crickcast Multi Channel Player</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.5/shaka-player.ui.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.5/controls.min.css">
+
+<style>
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: black;
+    font-family: sans-serif;
+}
+
+/* Player */
+#videoContainer {
+    width: 100%;
+    height: 65%;
+}
+
+video {
+    width: 100%;
+    height: 100%;
+}
+
+/* Channel List */
+#channelList {
+    height: 35%;
+    overflow-y: auto;
+    background: #111;
+    padding: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.channelBtn {
+    padding: 8px 12px;
+    background: #222;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.channelBtn:hover {
+    background: red;
+}
+
+.active {
+    background: red;
+}
+
+/* Loader */
+#loading {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+}
+
+.spinner {
+    border: 4px solid #ccc;
+    border-top: 4px solid red;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    100% { transform: rotate(360deg); }
+}
+</style>
+
+</head>
+
+<body>
+
+<div id="loading"><div class="spinner"></div></div>
+
+<div id="videoContainer">
+    <video id="videoPlayer" autoplay playsinline></video>
+</div>
+
+<div id="channelList"></div>
+
+<script>
+const API_URL = "https://tv1.akcoder777.workers.dev";
+
+let player;
+let allChannels = [];
+let currentChannel = null;
+
+async function init() {
+    const res = await fetch(API_URL);
+    const data = await res.json();
+
+    // ✅ Filter all Star Sports channels
+    allChannels = data.filter(ch =>
+        ch.channel_name.toLowerCase().includes("star sports")
+    );
+
+    createChannelUI();
+
+    // Auto play first channel
+    if (allChannels.length > 0) {
+        loadChannel(allChannels[0]);
+    }
+}
+
+function createChannelUI() {
+    const container = document.getElementById("channelList");
+    container.innerHTML = "";
+
+    allChannels.forEach((ch, index) => {
+        const btn = document.createElement("div");
+        btn.className = "channelBtn";
+        btn.innerText = ch.channel_name;
+
+        btn.onclick = () => {
+            loadChannel(ch);
+
+            document.querySelectorAll(".channelBtn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+        };
+
+        if (index === 0) btn.classList.add("active");
+
+        container.appendChild(btn);
+    });
+}
+
+async function loadChannel(channel) {
+    document.getElementById("loading").style.display = "block";
+
+    currentChannel = channel;
+
+    if (player) {
+        await player.destroy();
+    }
+
+    const video = document.getElementById("videoPlayer");
+
+    shaka.polyfill.installAll();
+
+    player = new shaka.Player(video);
+    new shaka.ui.Overlay(player, document.getElementById("videoContainer"), video);
+
+    video.muted = true;
+
+    // ✅ Error + auto reconnect
+    player.addEventListener("error", async () => {
+        setTimeout(() => loadChannel(currentChannel), 3000);
+    });
+
+    player.configure({
+        drm: {
+            clearKeys: {
+                [channel.keyId]: channel.key
+            }
+        },
+        streaming: {
+            lowLatencyMode: true,
+            bufferingGoal: 8
+        }
+    });
+
+    // ✅ Network Filter
+    player.getNetworkingEngine().registerRequestFilter((type, request) => {
+
+        request.headers["Referer"] = "https://www.jiotv.com/";
+        request.headers["User-Agent"] = "Mozilla/5.0";
+
+        if (channel.cookie) {
+            request.headers["Cookie"] = channel.cookie;
+
+            const tokenMatch = channel.cookie.match(/__hdnea__=([^;]+)/);
+
+            if (tokenMatch) {
+                const token = "__hdnea__=" + tokenMatch[1];
+
+                if (
+                    type === shaka.net.NetworkingEngine.RequestType.SEGMENT ||
+                    type === shaka.net.NetworkingEngine.RequestType.MANIFEST
+                ) {
+                    if (!request.uris[0].includes("__hdnea__")) {
+                        const sep = request.uris[0].includes("?") ? "&" : "?";
+                        request.uris[0] += sep + token;
+                    }
+                }
+            }
+        }
+    });
+
+    try {
+        await player.load(channel.channel_url);
+        document.getElementById("loading").style.display = "none";
+    } catch {
+        document.getElementById("loading").style.display = "none";
+        alert("Stream failed");
+    }
+}
+
+window.onload = init;
+</script>
+
+</body>
+</html>
